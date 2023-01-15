@@ -8,6 +8,7 @@ using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Persistence;
 using MediaBrowser.Controller.Sync;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Logging;
@@ -19,7 +20,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
     public class PluginScheduledTask : IScheduledTask, IConfigurableScheduledTask
     {
         private readonly ILibraryManager LibraryManager;
-
+        private readonly IItemRepository _itemRepository;
         private readonly ILogger _log;
         private readonly IServerApplicationHost _serverApplicationHost;
         private readonly IUserDataManager _userDataManager;
@@ -41,9 +42,10 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
         public bool IsLogged => true;
 
         //Constructor
-        public PluginScheduledTask(ILibraryManager libraryManager, ILogManager logManager, IServerApplicationHost serverApplicationHost, IHttpClient httpClient)
+        public PluginScheduledTask(IItemRepository itemRepository, ILibraryManager libraryManager, ILogManager logManager, IServerApplicationHost serverApplicationHost, IHttpClient httpClient)
         {
             LibraryManager = libraryManager;
+            _itemRepository = itemRepository;
             _serverApplicationHost = serverApplicationHost;
             _httpClient = httpClient;
             _log = logManager.GetLogger(Plugin.Instance.Name);
@@ -62,7 +64,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
         {
             _log.Info("Getting Started");
             await GetSeries();
-            
+
             List<PersonInfo> seriesPeople = new List<PersonInfo>();
             List<PersonInfo> episodePeople = new List<PersonInfo>();
 
@@ -70,13 +72,17 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             {
                 _log.Info("Series {0} {1} {2}", item.InternalId, item.Name, item.Path);
                 seriesPeople = LibraryManager.GetItemPeople(item);
-                var episodes = await GetEpisodes(item);
-                
+                var episodes = await GetEpisodes(item);               
+               
+
                 IEnumerable<PersonInfo> duplicatePeople = new List<PersonInfo>();
                 foreach (BaseItem episode in episodes)
                 {
                     episodePeople = LibraryManager.GetItemPeople(episode);
                     duplicatePeople = from ep in episodePeople where seriesPeople.Any(sp => sp.Name == ep.Name && ep.Type == PersonType.GuestStar && sp.Type == PersonType.Actor) select ep;
+                    // var episodeFilePath = GetFileName(episode);
+                    // _log.Info("Episode filepath = {0}", episodeFilePath);
+                
                 }
 
                 //duplicatePeople = (List<PersonInfo>) from ep in episodePeople where seriesPeople.Any(sp => sp.Name == ep.Name && ep.Type == PersonType.GuestStar && sp.Type == PersonType.Actor) select ep;
@@ -91,6 +97,14 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
                 progress.Report(dProgress);
             }
         }
+
+        private string GetFileName(BaseItem item)
+        {
+            string fileName = string.Empty;
+            fileName = item.Path;
+            return fileName;
+        }
+
 
         private async Task<List<BaseItem>> GetEpisodes(BaseItem item)
         {
