@@ -6,9 +6,10 @@ using System.Threading.Tasks;
 using MediaBrowser.Common.Net;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Sync;
-using MediaBrowser.Model.Extensions;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Logging;
 using MediaBrowser.Model.Tasks;
 
@@ -50,44 +51,70 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
 
         //progressBar fields
         private double _totalProgress;
-        private int _totalItems;
 
         //Get Library Item fields
         private BaseItem[] _itemsInLibraries;
         private int _numberOfItemsInLibraries;
-        private object _itemsCount;
-        private BaseItem[] _personinseries;
 
 
         //Task that will execute from the SheduleTask Menu
         public async Task Execute(CancellationToken cancellationToken, IProgress<double> progress)
         {
-            //Do work here for your Scheduled Task
-            //
             _log.Info("Getting Started");
             await GetSeries();
+            
+            List<PersonInfo> seriesPeople = new List<PersonInfo>();
+            List<PersonInfo> episodePeople = new List<PersonInfo>();
+
             foreach (BaseItem item in _itemsInLibraries)
             {
-                _log.Info("Series {0} {1} {2}", item.Id, item.Name, item.Path);
-                List<Person> seriesPeople = new List<Person>();
+                _log.Info("Series {0} {1} {2}", item.InternalId, item.Name, item.Path);
                 seriesPeople = LibraryManager.GetItemPeople(item);
+                var episodes = await GetEpisodes(item);
+                
+                IEnumerable<PersonInfo> duplicatePeople = new List<PersonInfo>();
+                foreach (BaseItem episode in episodes)
+                {
+                    episodePeople = LibraryManager.GetItemPeople(episode);
+                    duplicatePeople = from ep in episodePeople where seriesPeople.Any(sp => sp.Name == ep.Name && ep.Type == PersonType.GuestStar && sp.Type == PersonType.Actor) select ep;
+                }
 
+                //duplicatePeople = (List<PersonInfo>) from ep in episodePeople where seriesPeople.Any(sp => sp.Name == ep.Name && ep.Type == PersonType.GuestStar && sp.Type == PersonType.Actor) select ep;
 
+                foreach (var gstar in duplicatePeople)
+                {
+                    _log.Debug("Duplicate person found: {0} with type = {1} in Season {2}:Episode{3}", gstar.Name, gstar.Type.ToString(), item.Name, item.IndexNumber.ToString());
+                }
+
+                _totalProgress++;
+                double dProgress = 100 * (_totalProgress / _numberOfItemsInLibraries);
+                progress.Report(dProgress);
             }
-            
+        }
+
+        private async Task<List<BaseItem>> GetEpisodes(BaseItem item)
+        {
+            var queryList = new InternalItemsQuery
+            {
+                Recursive = true,
+                ParentIds = new []{ item.InternalId},
+                IncludeItemTypes = new[] { nameof(Episode) },
+            };
+
+            List<BaseItem> episodeList = new List<BaseItem>();
+            episodeList = LibraryManager.GetItemList(queryList).ToList();
+            return episodeList;
 
         }
 
         private async Task GetSeries()
         {
-            
             try
             {
                 var queryList = new InternalItemsQuery
                 {
                     Recursive = true,
-                    IncludeItemTypes = new[] {"Series"},
-                    
+                    IncludeItemTypes = new[] {nameof(Series)},
                 };
 
                 _itemsInLibraries = LibraryManager.GetItemList(queryList);
@@ -96,31 +123,9 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             }
             catch (Exception ex)
             {
-                _log.Error("Error");
-                
+                _log.Error("Error:", ex.ToString());
                 return;
-
             }
-
-
-        }
-
-        private async Task GetPeople()
-        {
-            _log.Info("Get People for each Series Item");
-            
-
-            var queryList = new InternalItemsQuery
-            {
-                Recursive = true,
-                IncludeItemTypes= new[] {"People"},
-                ParentIds = new [] { item.Id },
-            };
-
-
-
-
-
         }
 
         //Task Triggers - Currently unset, user can set these themselves in the menu.
