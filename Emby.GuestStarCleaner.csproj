@@ -1,0 +1,42 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyVersion>0.0.0.1</AssemblyVersion>
+    <FileVersion>0.0.0.1</FileVersion>
+    <BaseOutputPath>bin\</BaseOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="thumb.jpg" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Configuration\PluginTab2ConfigurationPage.html" />
+    <EmbeddedResource Include="Configuration\PluginTab2ConfigurationPage.js" />
+    <EmbeddedResource Include="Configuration\PluginTab3ConfigurationPage.html" />
+    <EmbeddedResource Include="Configuration\PluginTab3ConfigurationPage.js" />
+    <EmbeddedResource Include="Configuration\GSCleanerConfigurationPage.html" />
+    <EmbeddedResource Include="Configuration\GSCleanerConfigurationPage.js" />
+    <EmbeddedResource Include="Configuration\PluginNameSettings.html" />
+    <EmbeddedResource Include="Configuration\PluginNameSettings.js" />
+    <EmbeddedResource Include="thumb.jpg" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MediaBrowser.Common" Version="4.7.9" />
+    <PackageReference Include="MediaBrowser.Server.Core" Version="4.7.9" />
+    <PackageReference Include="System.Memory" Version="4.5.5" />
+    <PackageReference Include="System.Text.Json" Version="6.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Models\" />
+  </ItemGroup>
+
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="xcopy &quot;$(TargetPath)&quot; &quot;C:\Users\Nicholas Bird\AppData\Roaming\Emby-Server\programdata\plugins\&quot; /Y" />
+  </Target>
+
+</Project>
