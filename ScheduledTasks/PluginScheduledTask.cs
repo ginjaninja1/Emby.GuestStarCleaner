@@ -193,7 +193,11 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
 
         private async Task RemovePerson(PersonInfo person, BaseItem episode)
         {
+            
             List<PersonInfo> ifPeople = new List<PersonInfo>();
+            
+            //var itemtoremove = new PersonInfo();
+            //itemtoremove = null;
             var removequery = new InternalPeopleQuery
             {
 
@@ -202,7 +206,36 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             };
 
             ifPeople = LibraryManager.GetItemPeople(removequery);
-            ifPeople.Remove(person);
+            //_log.Info("Before EpID:{0} S:{1}E:{2} PeopleCount:{3}", episode.InternalId, episode.ParentIndexNumber, episode.IndexNumber, ifPeople.Count);
+
+            /*
+            foreach (PersonInfo _p in ifPeople)
+            {
+                if ((_p.Id == person.Id) && (_p.Type == person.Type))
+                {
+                    itemtoremove = _p;
+                    break;
+                }
+                
+            }
+            */
+            for (int i = ifPeople.Count - 1; i >= 0; i--)
+            {
+                if ((ifPeople[i].Id == person.Id) && (ifPeople[i].Type == person.Type))
+                {
+                    ifPeople.RemoveAt(i);
+                }
+                    
+            }
+
+            /*
+            if (itemtoremove != null)
+            {
+                var b = ifPeople.Remove(itemtoremove);
+                //_log.Info("Bool {0}", b.ToString());
+            }
+            */
+            //_log.Info("After EpID:{0} S:{1}E:{2} PeopleCount:{3}", episode.InternalId, episode.ParentIndexNumber, episode.IndexNumber, ifPeople.Count);
             LibraryManager.UpdatePeople(episode, ifPeople, false);
 
 
