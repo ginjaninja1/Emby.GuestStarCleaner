@@ -80,7 +80,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
                
 
                 IEnumerable<PersonInfo> duplicatePeople = new List<PersonInfo>();
-                IEnumerable<PersonInfo> duplicatePeopleRelaxed = new List<PersonInfo>();
+                IEnumerable<PersonInfo> checkPeople = new List<PersonInfo>();
                 var duplicates = false;
                 
                 foreach (BaseItem episode in episodes)
@@ -94,7 +94,12 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
                     episodePeople = LibraryManager.GetItemPeople(episodequery);
                     
                     duplicatePeople = from ep in episodePeople where seriesPeople.Any(sp => sp.Id == ep.Id && ep.Type == PersonType.GuestStar && sp.Type == PersonType.Actor) select ep;
-                    //duplicatePeopleRelaxed = from ep in episodePeople where seriesPeople.Any(sp => sp.Name == ep.Name && ep.Type == PersonType.GuestStar && sp.Type == PersonType.Actor) select ep;
+                    checkPeople = from ep in episodePeople where seriesPeople.Any(sp => sp.Name == ep.Name && sp.Id != ep.Id) select ep;
+
+
+                    
+
+
 
                     if (duplicatePeople.Count() != 0)
                     {   
@@ -122,12 +127,27 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
                             }
                         }
                     }
+                    else
+                    {
+                        if (checkPeople.Count() != 0)
+                        {
+                            foreach (var gstar2 in checkPeople)
+                            {
+                                _log.Debug("Possible Provider Data Error: Check Person: {0} with type = {1} in S{2}E{3} - {4} on series/provider",
+                                        gstar2.Name, gstar2.Type.ToString(), episode.ParentIndexNumber.Value.ToString("D2"),
+                                        episode.IndexNumber.Value.ToString("D2"), item.Name);
+                            }
+
+                                
+                        }
+                    }
                     
 
                 }
                 if (!duplicates)
                 {
                     _log.Info("No Duplicates Detected for Series: {0}", item.Name);
+
                     
                 }
                 else
