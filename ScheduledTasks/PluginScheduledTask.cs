@@ -54,7 +54,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             var config = Plugin.Instance.Configuration;
             if (!config.EnableGSCleaner)
             {
-                _log.Info("GuestStar Cleaner is not enabled --- Exiting now"); 
+                _log.Info("GuestStar Cleaner is Not Enabled in Plugin Configuration: Exiting Now"); 
                 return;
             }
             
@@ -74,13 +74,15 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
                 };
 
                 
-                _log.Info("Getting Series and Episode Person Info for {1} -- Id:{0} -- Path:{2}", item.InternalId, item.Name, item.Path);
+                _log.Info("Getting Series and Episode Person Info: {1} - Id:{0} - {2}", item.InternalId, item.Name, item.Path);
                 seriesPeople = LibraryManager.GetItemPeople(seriesquery);
                 var episodes = await GetEpisodes(item);               
                
 
                 IEnumerable<PersonInfo> duplicatePeople = new List<PersonInfo>();
                 IEnumerable<PersonInfo> duplicatePeopleRelaxed = new List<PersonInfo>();
+                var duplicates = false;
+                
                 foreach (BaseItem episode in episodes)
                 {
                     var episodequery = new InternalPeopleQuery
@@ -94,31 +96,52 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
                     duplicatePeople = from ep in episodePeople where seriesPeople.Any(sp => sp.Id == ep.Id && ep.Type == PersonType.GuestStar && sp.Type == PersonType.Actor) select ep;
                     //duplicatePeopleRelaxed = from ep in episodePeople where seriesPeople.Any(sp => sp.Name == ep.Name && ep.Type == PersonType.GuestStar && sp.Type == PersonType.Actor) select ep;
 
-                    if (duplicatePeople.Count() == 0)
-                    {
-                        _log.Info("There are no Duplicate persons found in {0}", episode.Name);
-                    }
-                    else
-                    {
+                    if (duplicatePeople.Count() != 0)
+                    {   
+                        
+                        
+                    
+                        duplicates = true;
                         foreach (var gstar in duplicatePeople)
                         {
+
+
                             if (!config.EnableGSTestmode)
                             {
                                 await RemovePerson(gstar, episode);
-                                _log.Info(
-                                    "Test Mode is NOT enabled - Removed dupicate person:{0} with type = {1} in Season {2}:Episode{3}",
-                                    gstar.Name, gstar.Type.ToString(), episode.ParentIndexNumber.ToString(),
-                                    episode.IndexNumber.ToString());
+                                _log.Debug("Removed Dupicate Person: {0} with type = {1} in S{2}E{3} - {4}",
+                                    gstar.Name, gstar.Type.ToString(), episode.ParentIndexNumber.Value.ToString("D2"),
+                                    episode.IndexNumber.Value.ToString("D2"), item.Name);
                             }
                             else
                             {
-                                _log.Info("Test Mode Enabled - No actors will be removed from Database");
-                                _log.Info("Duplicate person found: {0} with type = {1} in Season {2}:Episode{3}",
-                                    gstar.Name, gstar.Type.ToString(), episode.ParentIndexNumber.ToString(),
-                                    episode.IndexNumber.ToString());
+                                
+                                _log.Debug("Testmode On: Ignored Duplicate Person: {0} with type = {1} in S{2}E{3} - {4}",
+                                    gstar.Name, gstar.Type.ToString(), episode.ParentIndexNumber.Value.ToString("D2"),
+                                    episode.IndexNumber.Value.ToString("D2"), item.Name);
                             }
                         }
                     }
+                    
+
+                }
+                if (!duplicates)
+                {
+                    _log.Info("No Duplicates Detected for Series: {0}", item.Name);
+                    
+                }
+                else
+                {
+                    if (!config.EnableGSTestmode)
+                    {
+                        _log.Info("Duplicates Removed for Series: {0} - Enable Debug Log for Details", item.Name);
+                    }
+                    else
+                    {
+                        _log.Info("Testmode On: Duplicates Detected for Series: {0} - Enable Debug Log for Details; Turn Off Testmode to Remove from Emby", item.Name);
+                    }
+                        
+                    
                 }
                 _totalProgress++;
                 double dProgress = 100 * (_totalProgress / _numberOfSeries);
