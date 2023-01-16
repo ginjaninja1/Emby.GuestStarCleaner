@@ -98,18 +98,25 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
                     {
                         _log.Info("There are no Duplicate persons found in {0}", episode.Name);
                     }
-
-                    foreach (var gstar in duplicatePeople)
+                    else
                     {
-                        if (!config.EnableGSTestmode)
+                        foreach (var gstar in duplicatePeople)
                         {
-                            await RemovePerson(gstar, episode );
-                            _log.Info("Test Mode is NOT enabled - Removed dupicate person:{0} with type = {1} in Season {2}:Episode{3}", gstar.Name, gstar.Type.ToString(), episode.ParentIndexNumber.ToString(), episode.IndexNumber.ToString());
-                        }
-                        else
-                        {
-                            _log.Info("Test Mode Enabled - No actors will be removed from Database");
-                            _log.Info("Duplicate person found: {0} with type = {1} in Season {2}:Episode{3}", gstar.Name, gstar.Type.ToString(), episode.ParentIndexNumber.ToString(), episode.IndexNumber.ToString());
+                            if (!config.EnableGSTestmode)
+                            {
+                                await RemovePerson(gstar, episode);
+                                _log.Info(
+                                    "Test Mode is NOT enabled - Removed dupicate person:{0} with type = {1} in Season {2}:Episode{3}",
+                                    gstar.Name, gstar.Type.ToString(), episode.ParentIndexNumber.ToString(),
+                                    episode.IndexNumber.ToString());
+                            }
+                            else
+                            {
+                                _log.Info("Test Mode Enabled - No actors will be removed from Database");
+                                _log.Info("Duplicate person found: {0} with type = {1} in Season {2}:Episode{3}",
+                                    gstar.Name, gstar.Type.ToString(), episode.ParentIndexNumber.ToString(),
+                                    episode.IndexNumber.ToString());
+                            }
                         }
                     }
                 }
