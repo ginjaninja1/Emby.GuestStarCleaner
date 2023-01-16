@@ -10,6 +10,7 @@ using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Persistence;
 using MediaBrowser.Controller.Sync;
+using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Logging;
 using MediaBrowser.Model.Tasks;
@@ -55,73 +56,95 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
         private double _totalProgress;
 
         //Get Library Item fields
-        private BaseItem[] _itemsInLibraries;
-        private int _numberOfItemsInLibraries;
+        private BaseItem[] _Series;
+        private int _numberOfSeries;
 
 
         //Task that will execute from the ScheduleTask Menu
         public async Task Execute(CancellationToken cancellationToken, IProgress<double> progress)
         {
+
+            var config = Plugin.Instance.Configuration;
+            if (!config.EnableGSCleaner) { _log.Info("GuestStar Cleaner is not enabled --- Exiting now"); return; }
+            
             _log.Info("Getting Started");
             await GetSeries();
 
             List<PersonInfo> seriesPeople = new List<PersonInfo>();
             List<PersonInfo> episodePeople = new List<PersonInfo>();
-            
-
-            foreach (BaseItem item in _itemsInLibraries)
+             
+           
+            foreach (BaseItem item in _Series)
             {
-                _log.Info("Series {0} {1} {2}", item.InternalId, item.Name, item.Path);
-                seriesPeople = LibraryManager.GetItemPeople(item);
-                var episodes = await GetEpisodes(item);
-                var removeList = new List<PersonInfo>();
+                var seriesquery = new InternalPeopleQuery
+                {
+                    
+                    ItemIds = new[] { item.InternalId },
+                    EnableIds = true,
+                };
+
                 
+                _log.Info("Series {0} {1} {2}", item.InternalId, item.Name, item.Path);
+                seriesPeople = LibraryManager.GetItemPeople(seriesquery);
+                /*
+                foreach (PersonInfo person in seriesPeople)
+                {
+                    _log.Info("Series Person {0} {1} {2}", person.Id, person.Type, person.Name);
+                }
+                */
+                var episodes = await GetEpisodes(item);               
+               
+
+                IEnumerable<PersonInfo> duplicatePeople = new List<PersonInfo>();
+                IEnumerable<PersonInfo> duplicatePeopleRelaxed = new List<PersonInfo>();
                 foreach (BaseItem episode in episodes)
                 {
-                    episodePeople = LibraryManager.GetItemPeople(episode);
-                    var duplicatePeople = from ep in episodePeople where seriesPeople.Any(sp => sp.Name == ep.Name && ep.Type == PersonType.GuestStar && sp.Type == PersonType.Actor) select ep;
-                    
-                    //What we've done here is to get the list of series people and open up the person properties so we can make some comparisons
-                    foreach (var person in seriesPeople)
+                    var episodequery = new InternalPeopleQuery
                     {
-                        //we also need to open up the duplicatePeople properties
-                        foreach (var dupe in duplicatePeople)
+
+                        ItemIds = new[] { episode.InternalId },
+                        EnableIds = true,
+                    };
+
+                    episodePeople = LibraryManager.GetItemPeople(episodequery);
+                    /*
+                    foreach (PersonInfo person in episodePeople)
+                    {
+                        _log.Info("Episode Person {0} {1} {2}", person.Id, person.Type, person.Name);
+                    }
+                    */
+                    duplicatePeople = from ep in episodePeople where seriesPeople.Any(sp => sp.Id == ep.Id && ep.Type == PersonType.GuestStar && sp.Type == PersonType.Actor) select ep;
+                    duplicatePeopleRelaxed = from ep in episodePeople where seriesPeople.Any(sp => sp.Name == ep.Name && ep.Type == PersonType.GuestStar && sp.Type == PersonType.Actor) select ep;
+                    // var episodeFilePath = GetFileName(episode);
+
+                    foreach (var gstar in duplicatePeople)
+                    {
+                        if (!config.enableGSTestmode)
                         {
-                            //then we are gonna do some conditional logic, where if the names match and also they are a guest star in the episode but also an actor on the Series list, we need to add this to a new list....
-                            //so we can then remove them from the list we are actually iterating thru in the next stage.
-                            if (dupe.Name == person.Name && dupe.Type == PersonType.GuestStar && person.Type == PersonType.Actor)
-                            {
-                                _log.Debug("Dupe found: {0} with RoleType: {1}", dupe.Name, dupe.Type.ToString());
-                                removeList.Add(dupe);
-                            }
+                            _log.Debug("Duplicate person removed: {0} with type = {1} in Season {2}:Episode{3}", gstar.Name, gstar.Type.ToString(), episode.ParentIndexNumber.ToString(), episode.IndexNumber.ToString());
+
+                            await RemovePerson(gstar, episode );
+                        } else
+                        {
+                            _log.Debug("Duplicate person found: {0} with type = {1} in Season {2}:Episode{3}", gstar.Name, gstar.Type.ToString(), episode.ParentIndexNumber.ToString(), episode.IndexNumber.ToString());
+
                         }
+
                     }
+                    // _log.Info("Episode filepath = {0}", episodeFilePath);
 
-                    //Once we have the removeList we can now remove each person from the episodePeople list.
-                    foreach (var peep in removeList)
-                    {
-                        episodePeople.Remove(peep);
-                    }
-
-                    _log.Debug("Episode Id = {0} -- SeriesId = {1}", episode.InternalId.ToString(), item.InternalId.ToString());
-
-                    //Then we can update the people list for each episode with our new episodePeople list (which has the dupes removed).
-                    //A library scan will need to be run by the user after this plugin has been run.
-
-                    //TODO uncomment the next line under this one.  TEST on test library first
-                    //LibraryManager.UpdatePeople(episode, episodePeople, false);
                 }
 
-                foreach (var epRole in episodePeople)
-                {
-                    _log.Debug("Episode Person Remaining : {0} with RoleType: {1}", epRole.Name, epRole.Type.ToString());
+                //duplicatePeople = (List<PersonInfo>) from ep in episodePeople where seriesPeople.Any(sp => sp.Name == ep.Name && ep.Type == PersonType.GuestStar && sp.Type == PersonType.Actor) select ep;
 
-                }
+                
+
+
 
                 
 
                 _totalProgress++;
-                double dProgress = 100 * (_totalProgress / _numberOfItemsInLibraries);
+                double dProgress = 100 * (_totalProgress / _numberOfSeries);
                 progress.Report(dProgress);
             }
         }
@@ -154,9 +177,9 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
                     IncludeItemTypes = new[] {nameof(Series)},
                 };
 
-                _itemsInLibraries = LibraryManager.GetItemList(queryList);
-                _numberOfItemsInLibraries = _itemsInLibraries.Length;
-                _log.Info("Total No. of Series in Library {0}", _numberOfItemsInLibraries.ToString());
+                _Series = LibraryManager.GetItemList(queryList);
+                _numberOfSeries = _Series.Length;
+                _log.Info("Total No. of Series in Library {0}", _numberOfSeries.ToString());
             }
             catch (Exception ex)
             {
@@ -165,10 +188,61 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             }
         }
 
+        private async Task RemovePerson(PersonInfo person, BaseItem episode)
+        {
+            
+            List<PersonInfo> ifPeople = new List<PersonInfo>();
+            
+            //var itemtoremove = new PersonInfo();
+            //itemtoremove = null;
+            var removequery = new InternalPeopleQuery
+            {
+
+                ItemIds = new[] { episode.InternalId },
+                EnableIds = true,
+            };
+
+            ifPeople = LibraryManager.GetItemPeople(removequery);
+            //_log.Info("Before EpID:{0} S:{1}E:{2} PeopleCount:{3}", episode.InternalId, episode.ParentIndexNumber, episode.IndexNumber, ifPeople.Count);
+
+            /*
+            foreach (PersonInfo _p in ifPeople)
+            {
+                if ((_p.Id == person.Id) && (_p.Type == person.Type))
+                {
+                    itemtoremove = _p;
+                    break;
+                }
+                
+            }
+            */
+            for (int i = ifPeople.Count - 1; i >= 0; i--)
+            {
+                if ((ifPeople[i].Id == person.Id) && (ifPeople[i].Type == person.Type))
+                {
+                    ifPeople.RemoveAt(i);
+                }
+                    
+            }
+
+            /*
+            if (itemtoremove != null)
+            {
+                var b = ifPeople.Remove(itemtoremove);
+                //_log.Info("Bool {0}", b.ToString());
+            }
+            */
+            //_log.Info("After EpID:{0} S:{1}E:{2} PeopleCount:{3}", episode.InternalId, episode.ParentIndexNumber, episode.IndexNumber, ifPeople.Count);
+            LibraryManager.UpdatePeople(episode, ifPeople, false);
+
+
+        }
+
         //Task Triggers - Currently unset, user can set these themselves in the menu.
         public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
         {
             return new List<TaskTriggerInfo>();
+
         }
 
 

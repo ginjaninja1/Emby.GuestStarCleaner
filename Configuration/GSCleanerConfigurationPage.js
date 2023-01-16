@@ -27,6 +27,7 @@ define([
             ApiClient.getPluginConfiguration(pluginId).then(function(config) {
 
                 view.querySelector(".chkEnableGSCleaner").checked = config.EnableGSCleaner;
+                //view.querySelector(".chkenableGSTestmode").checked = config.enableGSTestmode;
             });
         }
 
@@ -50,6 +51,19 @@ define([
                         e.preventDefault();
                         ApiClient.getPluginConfiguration(pluginId).then((config) => {
                             config.EnableGSCleaner = enableGSCleaner.checked;
+                            ApiClient.updatePluginConfiguration(pluginId, config).then((r) => {
+                                Dashboard.processPluginConfigurationUpdateResult(r);
+                            });
+                        });
+                    });
+
+                var enableGSTestmode = view.querySelector(".chkenableGSTestmode");
+                enableGSTestmode.addEventListener('change',
+                    (e) => {
+                        e.preventDefault();
+                        e.
+                        ApiClient.getPluginConfiguration(pluginId).then((config) => {
+                            config.enableGSTestmode = enableGSTestmode.checked;
                             ApiClient.updatePluginConfiguration(pluginId, config).then((r) => {
                                 Dashboard.processPluginConfigurationUpdateResult(r);
                             });
