@@ -3,14 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using MediaBrowser.Common.Net;
-using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
-using MediaBrowser.Controller.Persistence;
-using MediaBrowser.Controller.Sync;
-using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Logging;
 using MediaBrowser.Model.Tasks;
@@ -21,12 +16,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
     public class PluginScheduledTask : IScheduledTask, IConfigurableScheduledTask
     {
         private readonly ILibraryManager LibraryManager;
-        //private IItemRepository ItemRepository { get; }
         private readonly ILogger _log;
-        private readonly IServerApplicationHost _serverApplicationHost;
-        private readonly IUserDataManager _userDataManager;
-        private IHttpClient _httpClient;
-        private ISyncProvider syncProvider;
 
         public string Name => "Guest Star Cleaner";
 
@@ -43,12 +33,9 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
         public bool IsLogged => true;
 
         //Constructor
-        public PluginScheduledTask(IItemRepository itemRepository, ILibraryManager libraryManager, ILogManager logManager, IServerApplicationHost serverApplicationHost, IHttpClient httpClient)
+        public PluginScheduledTask(ILibraryManager libraryManager, ILogManager logManager)
         {
             LibraryManager = libraryManager;
-            //ItemRepository = itemRepository;
-            _serverApplicationHost = serverApplicationHost;
-            _httpClient = httpClient;
             _log = logManager.GetLogger(Plugin.Instance.Name);
         }
 
@@ -56,7 +43,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
         private double _totalProgress;
 
         //Get Library Item fields
-        private BaseItem[] _Series;
+        private BaseItem[] _series;
         private int _numberOfSeries;
 
 
@@ -65,33 +52,30 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
         {
 
             var config = Plugin.Instance.Configuration;
-            if (!config.EnableGSCleaner) { _log.Info("GuestStar Cleaner is not enabled --- Exiting now"); return; }
+            if (!config.EnableGSCleaner)
+            {
+                _log.Info("GuestStar Cleaner is not enabled --- Exiting now"); 
+                return;
+            }
             
-            _log.Info("Getting Started");
+            _log.Info("Guest Star Cleaner Initializing");
             await GetSeries();
 
             List<PersonInfo> seriesPeople = new List<PersonInfo>();
             List<PersonInfo> episodePeople = new List<PersonInfo>();
              
            
-            foreach (BaseItem item in _Series)
+            foreach (BaseItem item in _series)
             {
                 var seriesquery = new InternalPeopleQuery
                 {
-                    
                     ItemIds = new[] { item.InternalId },
                     EnableIds = true,
                 };
 
                 
-                _log.Info("Series {0} {1} {2}", item.InternalId, item.Name, item.Path);
+                _log.Info("Getting Series and Episode Person Info for {1} -- Id:{0} -- Path:{2}", item.InternalId, item.Name, item.Path);
                 seriesPeople = LibraryManager.GetItemPeople(seriesquery);
-                /*
-                foreach (PersonInfo person in seriesPeople)
-                {
-                    _log.Info("Series Person {0} {1} {2}", person.Id, person.Type, person.Name);
-                }
-                */
                 var episodes = await GetEpisodes(item);               
                
 
@@ -101,56 +85,39 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
                 {
                     var episodequery = new InternalPeopleQuery
                     {
-
                         ItemIds = new[] { episode.InternalId },
                         EnableIds = true,
                     };
 
                     episodePeople = LibraryManager.GetItemPeople(episodequery);
-                    /*
-                    foreach (PersonInfo person in episodePeople)
-                    {
-                        _log.Info("Episode Person {0} {1} {2}", person.Id, person.Type, person.Name);
-                    }
-                    */
+                    
                     duplicatePeople = from ep in episodePeople where seriesPeople.Any(sp => sp.Id == ep.Id && ep.Type == PersonType.GuestStar && sp.Type == PersonType.Actor) select ep;
-                    duplicatePeopleRelaxed = from ep in episodePeople where seriesPeople.Any(sp => sp.Name == ep.Name && ep.Type == PersonType.GuestStar && sp.Type == PersonType.Actor) select ep;
-                    // var episodeFilePath = GetFileName(episode);
+                    //duplicatePeopleRelaxed = from ep in episodePeople where seriesPeople.Any(sp => sp.Name == ep.Name && ep.Type == PersonType.GuestStar && sp.Type == PersonType.Actor) select ep;
+
+                    if (duplicatePeople.Count() == 0)
+                    {
+                        _log.Info("There are no Duplicate persons found in {0}", episode.Name);
+                    }
 
                     foreach (var gstar in duplicatePeople)
                     {
                         if (!config.EnableGSTestmode)
                         {
-                            _log.Debug("Duplicate person removed: {0} with type = {1} in Season {2}:Episode{3}", gstar.Name, gstar.Type.ToString(), episode.ParentIndexNumber.ToString(), episode.IndexNumber.ToString());
-
                             await RemovePerson(gstar, episode );
-                        } else
-                        {
-                            _log.Debug("Duplicate person found: {0} with type = {1} in Season {2}:Episode{3}", gstar.Name, gstar.Type.ToString(), episode.ParentIndexNumber.ToString(), episode.IndexNumber.ToString());
-
+                            _log.Info("Test Mode is NOT enabled - Removed dupicate person:{0} with type = {1} in Season {2}:Episode{3}", gstar.Name, gstar.Type.ToString(), episode.ParentIndexNumber.ToString(), episode.IndexNumber.ToString());
                         }
-
+                        else
+                        {
+                            _log.Info("Test Mode Enabled - No actors will be removed from Database");
+                            _log.Info("Duplicate person found: {0} with type = {1} in Season {2}:Episode{3}", gstar.Name, gstar.Type.ToString(), episode.ParentIndexNumber.ToString(), episode.IndexNumber.ToString());
+                        }
                     }
-                    // _log.Info("Episode filepath = {0}", episodeFilePath);
-
                 }
-
-                //duplicatePeople = (List<PersonInfo>) from ep in episodePeople where seriesPeople.Any(sp => sp.Name == ep.Name && ep.Type == PersonType.GuestStar && sp.Type == PersonType.Actor) select ep;
-
-                
-
-
-
-                
-
                 _totalProgress++;
                 double dProgress = 100 * (_totalProgress / _numberOfSeries);
                 progress.Report(dProgress);
             }
         }
-
-        
-
 
         private async Task<List<BaseItem>> GetEpisodes(BaseItem item)
         {
@@ -177,8 +144,8 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
                     IncludeItemTypes = new[] {nameof(Series)},
                 };
 
-                _Series = LibraryManager.GetItemList(queryList);
-                _numberOfSeries = _Series.Length;
+                _series = LibraryManager.GetItemList(queryList);
+                _numberOfSeries = _series.Length;
                 _log.Info("Total No. of Series in Library {0}", _numberOfSeries.ToString());
             }
             catch (Exception ex)
@@ -190,11 +157,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
 
         private async Task RemovePerson(PersonInfo person, BaseItem episode)
         {
-            
             List<PersonInfo> ifPeople = new List<PersonInfo>();
-            
-            //var itemtoremove = new PersonInfo();
-            //itemtoremove = null;
             var removequery = new InternalPeopleQuery
             {
 
@@ -203,35 +166,14 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             };
 
             ifPeople = LibraryManager.GetItemPeople(removequery);
-            //_log.Info("Before EpID:{0} S:{1}E:{2} PeopleCount:{3}", episode.InternalId, episode.ParentIndexNumber, episode.IndexNumber, ifPeople.Count);
-
-            /*
-            foreach (PersonInfo _p in ifPeople)
-            {
-                if ((_p.Id == person.Id) && (_p.Type == person.Type))
-                {
-                    itemtoremove = _p;
-                    break;
-                }
-                
-            }
-            */
+            
             for (int i = ifPeople.Count - 1; i >= 0; i--)
             {
                 if ((ifPeople[i].Id == person.Id) && (ifPeople[i].Type == person.Type))
                 {
                     ifPeople.RemoveAt(i);
                 }
-                    
             }
-
-            /*
-            if (itemtoremove != null)
-            {
-                var b = ifPeople.Remove(itemtoremove);
-                //_log.Info("Bool {0}", b.ToString());
-            }
-            */
             //_log.Info("After EpID:{0} S:{1}E:{2} PeopleCount:{3}", episode.InternalId, episode.ParentIndexNumber, episode.IndexNumber, ifPeople.Count);
             LibraryManager.UpdatePeople(episode, ifPeople, false);
 
