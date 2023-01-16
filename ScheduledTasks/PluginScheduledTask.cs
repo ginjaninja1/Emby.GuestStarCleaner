@@ -119,7 +119,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
 
                     foreach (var gstar in duplicatePeople)
                     {
-                        if (!config.enableGSTestmode)
+                        if (!config.EnableGSTestmode)
                         {
                             _log.Debug("Duplicate person removed: {0} with type = {1} in Season {2}:Episode{3}", gstar.Name, gstar.Type.ToString(), episode.ParentIndexNumber.ToString(), episode.IndexNumber.ToString());
 

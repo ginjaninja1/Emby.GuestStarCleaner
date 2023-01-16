@@ -6,13 +6,13 @@ namespace Emby.GuestStarCleaner.Configuration
     {
         //User Configuration Files
         public bool EnableGSCleaner { get; set; }
-        public bool enableGSTestmode { get; set; }
+        public bool EnableGSTestmode { get; set; }
 
         public PluginConfiguration()
         {
             //add default values here to use
             EnableGSCleaner = true;
-            enableGSTestmode = true;
+            EnableGSTestmode = true;
 
         }
     }
