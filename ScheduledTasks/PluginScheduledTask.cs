@@ -93,7 +93,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
 
                     episodePeople = LibraryManager.GetItemPeople(episodequery);
                     
-                    duplicatePeople = from ep in episodePeople where seriesPeople.Any(sp => sp.Id == ep.Id && ep.Type == PersonType.GuestStar && sp.Type == PersonType.Actor) select ep;
+                    duplicatePeople = from ep in episodePeople where seriesPeople.Any(sp => sp.Id == ep.Id && (ep.Type == PersonType.GuestStar && sp.Type == PersonType.Actor || ep.Type == PersonType.Actor && sp.Type == PersonType.Actor)) select ep;
                     checkPeople = from ep in episodePeople where seriesPeople.Any(sp => sp.Name == ep.Name && sp.Id != ep.Id) select ep;
 
 
