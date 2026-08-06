@@ -43,7 +43,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
         private double _totalProgress;
 
         //Get Library Item fields
-        private BaseItem[] _series;
+        //private BaseItem[] _series;
         private int _numberOfSeries;
 
 
@@ -59,96 +59,100 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             }
             
             _log.Info("Guest Star Cleaner Initializing");
-            await GetSeries();
+            
+            List<BaseItem> series = await GetSeries();
+
 
             List<PersonInfo> seriesPeople = new List<PersonInfo>();
             List<PersonInfo> episodePeople = new List<PersonInfo>();
-             
-           
-            foreach (BaseItem item in _series)
+
+
+            //foreach (BaseItem item in _series)
+            series?.ForEach(async item =>
             {
-                var seriesquery = new InternalPeopleQuery
+            var seriesquery = new InternalPeopleQuery
+            {
+                ItemIds = new[] { item.InternalId },
+                EnableIds = true,
+            };
+
+
+            _log.Info("Getting Series and Episode Person Info: {1} - Id:{0} - {2}", item.InternalId, item.Name, item.Path);
+            //_log.Info("Getting Series People");
+            seriesPeople = LibraryManager.GetItemPeople(seriesquery);
+            //_log.Info("Getting Episodes in Series");
+            var episodes = await GetEpisodes(item);
+
+
+            IEnumerable<PersonInfo> duplicatePeople = new List<PersonInfo>();
+            IEnumerable<PersonInfo> checkPeople = new List<PersonInfo>();
+            var duplicates = false;
+            //_log.Info("Entering Episode Loop");
+            //foreach (BaseItem episode in episodes)
+            episodes?.ForEach(async episode =>
+            {
+                //_log.Info("looping Episode: S{0}E{1}", episode.ParentIndexNumber.Value.ToString("D2"),episode.IndexNumber.Value.ToString("D2"));
+                var episodequery = new InternalPeopleQuery
                 {
-                    ItemIds = new[] { item.InternalId },
+                    ItemIds = new[] { episode.InternalId },
                     EnableIds = true,
                 };
+                //_log.Info("Getting Episode People");
+                episodePeople = LibraryManager.GetItemPeople(episodequery);
 
-                
-                _log.Info("Getting Series and Episode Person Info: {1} - Id:{0} - {2}", item.InternalId, item.Name, item.Path);
-                seriesPeople = LibraryManager.GetItemPeople(seriesquery);
-                var episodes = await GetEpisodes(item);               
-               
+                duplicatePeople = from ep in episodePeople where seriesPeople.Any(sp => sp.Id == ep.Id && (ep.Type == PersonType.GuestStar && sp.Type == PersonType.Actor || ep.Type == PersonType.Actor && sp.Type == PersonType.Actor)) select ep;
+                checkPeople = from ep in episodePeople where seriesPeople.Any(sp => sp.Name == ep.Name && sp.Id != ep.Id) select ep;
 
-                IEnumerable<PersonInfo> duplicatePeople = new List<PersonInfo>();
-                IEnumerable<PersonInfo> checkPeople = new List<PersonInfo>();
-                var duplicates = false;
-                
-                foreach (BaseItem episode in episodes)
+
+
+
+
+
+                if (duplicatePeople.Count() != 0)
                 {
-                    var episodequery = new InternalPeopleQuery
+
+
+
+                    duplicates = true;
+                    foreach (var gstar in duplicatePeople)
                     {
-                        ItemIds = new[] { episode.InternalId },
-                        EnableIds = true,
-                    };
-
-                    episodePeople = LibraryManager.GetItemPeople(episodequery);
-                    
-                    duplicatePeople = from ep in episodePeople where seriesPeople.Any(sp => sp.Id == ep.Id && (ep.Type == PersonType.GuestStar && sp.Type == PersonType.Actor || ep.Type == PersonType.Actor && sp.Type == PersonType.Actor)) select ep;
-                    checkPeople = from ep in episodePeople where seriesPeople.Any(sp => sp.Name == ep.Name && sp.Id != ep.Id) select ep;
 
 
-                    
-
-
-
-                    if (duplicatePeople.Count() != 0)
-                    {   
-                        
-                        
-                    
-                        duplicates = true;
-                        foreach (var gstar in duplicatePeople)
+                        if (!config.EnableGSTestmode)
+                        {
+                            await RemovePerson(gstar, episode);
+                            _log.Debug("Removed Dupicate Person: {0} with type = {1} in S{2}E{3} - {4}",
+                                gstar.Name, gstar.Type.ToString(), episode.ParentIndexNumber.Value.ToString("D2"),
+                                episode.IndexNumber.Value.ToString("D2"), item.Name);
+                        }
+                        else
                         {
 
-
-                            if (!config.EnableGSTestmode)
-                            {
-                                await RemovePerson(gstar, episode);
-                                _log.Debug("Removed Dupicate Person: {0} with type = {1} in S{2}E{3} - {4}",
-                                    gstar.Name, gstar.Type.ToString(), episode.ParentIndexNumber.Value.ToString("D2"),
-                                    episode.IndexNumber.Value.ToString("D2"), item.Name);
-                            }
-                            else
-                            {
-                                
-                                _log.Debug("Testmode On: Ignored Duplicate Person: {0} with type = {1} in S{2}E{3} - {4}",
-                                    gstar.Name, gstar.Type.ToString(), episode.ParentIndexNumber.Value.ToString("D2"),
-                                    episode.IndexNumber.Value.ToString("D2"), item.Name);
-                            }
+                            _log.Debug("Testmode On: Ignored Duplicate Person: {0} with type = {1} in S{2}E{3} - {4}",
+                                gstar.Name, gstar.Type.ToString(), episode.ParentIndexNumber.Value.ToString("D2"),
+                                episode.IndexNumber.Value.ToString("D2"), item.Name);
                         }
                     }
-                    else
+                }
+                else
+                {
+                    if (checkPeople.Count() != 0)
                     {
-                        if (checkPeople.Count() != 0)
+                        foreach (var gstar2 in checkPeople)
                         {
-                            foreach (var gstar2 in checkPeople)
-                            {
-                                _log.Debug("Possible Provider Data Error: Check Person: {0} with type = {1} in S{2}E{3} - {4} on series/provider",
-                                        gstar2.Name, gstar2.Type.ToString(), episode.ParentIndexNumber.Value.ToString("D2"),
-                                        episode.IndexNumber.Value.ToString("D2"), item.Name);
-                            }
-
-                                
+                            _log.Debug("Possible Provider Data Error: Check Person: {0} with type = {1} in S{2}E{3} - {4} on series/provider",
+                                    gstar2.Name, gstar2.Type.ToString(), episode.ParentIndexNumber.Value.ToString("D2"),
+                                    episode.IndexNumber.Value.ToString("D2"), item.Name);
                         }
-                    }
-                    
 
+
+                    }
                 }
                 if (!duplicates)
                 {
                     _log.Info("No Duplicates Detected for Series: {0}", item.Name);
 
-                    
+
                 }
                 else
                 {
@@ -160,13 +164,18 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
                     {
                         _log.Info("Testmode On: Duplicates Detected for Series: {0} - Enable Debug Log for Details; Turn Off Testmode to Remove from Emby", item.Name);
                     }
-                        
-                    
+
+
                 }
+
+            });
+            
+                
                 _totalProgress++;
                 double dProgress = 100 * (_totalProgress / _numberOfSeries);
                 progress.Report(dProgress);
             }
+            );
         }
 
         private async Task<List<BaseItem>> GetEpisodes(BaseItem item)
@@ -178,13 +187,26 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
                 IncludeItemTypes = new[] { nameof(Episode) },
             };
 
-            List<BaseItem> episodeList = new List<BaseItem>();
-            episodeList = LibraryManager.GetItemList(queryList).ToList();
-            return episodeList;
+
+            
+            try
+            {
+                
+                return LibraryManager.GetItemList(queryList).ToList();
+                //return episodeList;
+            }
+            catch (Exception ex)
+            {
+                _log.Error("Error:", ex.ToString());
+                List<BaseItem> episodeList = new List<BaseItem>();
+                return episodeList;
+
+            }
+            
 
         }
 
-        private async Task GetSeries()
+        private async Task<List<BaseItem>> GetSeries()
         {
             try
             {
@@ -194,14 +216,18 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
                     IncludeItemTypes = new[] {nameof(Series)},
                 };
 
-                _series = LibraryManager.GetItemList(queryList);
-                _numberOfSeries = _series.Length;
-                _log.Info("Total No. of Series in Library {0}", _numberOfSeries.ToString());
+                var seriesList = LibraryManager.GetItemList(queryList).ToList();
+                //_numberOfSeries = _series.Length;
+                _numberOfSeries = seriesList.Count;
+                //_log.Info("Total No. of Series in Library {0}", _numberOfSeries.ToString());
+                _log.Info("Total No. of Series in Library {0}", seriesList.Count);
+                return seriesList;
             }
             catch (Exception ex)
             {
                 _log.Error("Error:", ex.ToString());
-                return;
+                List<BaseItem> empty = new List<BaseItem>();
+                return empty;
             }
         }
 
