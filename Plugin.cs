@@ -2,65 +2,76 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Emby.GuestStarCleaner.Configuration;
+using Emby.GuestStarCleaner.UI;
+using MediaBrowser.Common;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
+using MediaBrowser.Controller;
 using MediaBrowser.Model.Drawing;
-using MediaBrowser.Model.Plugins;
+using MediaBrowser.Model.Logging;
+using MediaBrowser.Model.Plugins.UI;
 using MediaBrowser.Model.Serialization;
 
 namespace Emby.GuestStarCleaner
 {
-    public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages, IHasThumbImage
+    public class Plugin : BasePlugin<PluginConfiguration>, IHasThumbImage, IHasUIPages
     {
-        public static Plugin Instance { get; set; }
+        private readonly IServerApplicationHost applicationHost;
+        private readonly ILogger logger;
 
-        //You will need to generate a new GUID and paste it here - Tools => Create GUID
-        private Guid _id = new Guid("DD652519-2D16-46C4-B5B5-D697FBCF425C");
-        //[Guid("9E13488E-664B-47D6-B7F1-374919FD70BB")] type 5
-        public override string Name => "Guest Star Cleaner";
+        private List<IPluginUIPageController> pages;
 
-        public override string Description => "Removes duplicate Guest Stars if already in Series level";
-
-        public override Guid Id => _id;
-
-        public Plugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer) : base(applicationPaths,
-            xmlSerializer)
+        public Plugin(
+            IServerApplicationHost applicationHost,
+            ILogManager logManager)
+            : base(
+                applicationHost.Resolve<IApplicationPaths>(),
+                applicationHost.Resolve<IXmlSerializer>())
         {
+            this.applicationHost = applicationHost;
+            this.logger = logManager.GetLogger(this.Name);
+
             Instance = this;
         }
-        public ImageFormat ThumbImageFormat => ImageFormat.Jpg;
 
-        //Display Thumbnail image for Plugin Catalogue  - you will need to change build action for thumb.jpg to embedded Resource
+        /// <summary>
+        /// Configuration is accessed via Instance.Configuration /
+        /// SaveConfiguration() - inherited from BasePlugin&lt;T&gt;, no
+        /// custom store needed.
+        /// </summary>
+        public static Plugin Instance { get; private set; }
+
+        public override string Name => "Guest Star Cleaner";
+
+        public override string Description =>
+            "Removes duplicate Guest Star credits from episodes when the same person is already credited at the series level.";
+
+        public override Guid Id => new Guid("DD652519-2D16-46C4-B5B5-D697FBCF425C");
+
+        public ImageFormat ThumbImageFormat => ImageFormat.Png;
+
         public Stream GetThumbImage()
+            => this.GetType()
+                .Assembly
+                .GetManifestResourceStream(this.GetType().Namespace + ".thumb.png");
+
+        public IReadOnlyCollection<IPluginUIPageController> UIPageControllers
         {
-            Type type = GetType();
-            return type.Assembly.GetManifestResourceStream(type.Namespace + ".thumb.jpg");
+            get
+            {
+                if (this.pages == null)
+                {
+                    this.pages = new List<IPluginUIPageController>
+                    {
+                        new MainPageController(
+                            this.GetPluginInfo(),
+                            this.applicationHost,
+                            this.logger)
+                    };
+                }
+
+                return this.pages.AsReadOnly();
+            }
         }
-
-        //Web pages for Server UI configuration
-        public IEnumerable<PluginPageInfo> GetPages() => new[]
-        {
-
-            new PluginPageInfo
-            {
-                //html File
-                Name = "GSCleanerConfigurationPage",
-                EmbeddedResourcePath = GetType().Namespace + ".Configuration.GSCleanerConfigurationPage.html",
-                EnableInMainMenu = false,
-                /*MenuSection = "server",*/
-                //MenuIcon = "theaters"
-            },
-            new PluginPageInfo
-            {
-                //javascript file
-                Name = "GSCleanerConfigurationPageJS",
-                EmbeddedResourcePath = GetType().Namespace + ".Configuration.GSCleanerConfigurationPage.js"
-            },
-        };
-
-
-
-
-
     }
 }
