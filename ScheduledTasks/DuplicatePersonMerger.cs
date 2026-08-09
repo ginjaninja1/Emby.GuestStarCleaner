@@ -66,10 +66,10 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
                 return false;
             }
 
-            if (config.EnableGSTestmode && mergeAlreadyPerformedThisRun)
+            if (!config.EnableGSTestmode && mergeAlreadyPerformedThisRun)
             {
                 log.Debug(
-                    "Guest Star Cleaner: {0} Testmode On: skipping further merges this run (max 1 merge round per task run while testing) - would also have evaluated '{1}'",
+                    "Guest Star Cleaner: {0} Skipping further merges this run (max 1 merge per task run while testing this feature) - would also have evaluated '{1}'",
                     LogTag,
                     seriesPerson.Name);
                 return false;

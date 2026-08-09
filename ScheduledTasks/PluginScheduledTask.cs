@@ -79,17 +79,21 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             // reported as soon as each fire-and-forget lambda was merely
             // *started*, not once it finished - hence progress jumping to
             // 100% almost immediately while work was still in flight.
-            // Tracks whether a duplicate-person merge has already been
-            // performed this task run. While Test Mode is on, only one
-            // merge round is evaluated per run so results can be reviewed
-            // incrementally - see DuplicatePersonMerger.EvaluateAndRepair.
-            bool mergePerformedThisRun = false;
+            // Tracks how many duplicate-person merges have occurred this
+            // task run. While Test Mode is off, capped at 1 real merge per
+            // run so results can be reviewed incrementally while this
+            // feature is being tested - see
+            // DuplicatePersonMerger.EvaluateAndRepair. While Test Mode is
+            // on, no changes are ever made (as with the rest of this
+            // plugin), so every eligible match is simulated/logged
+            // uncapped.
+            int mergeCountThisRun = 0;
 
             for (int i = 0; i < seriesList.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                ProcessSeries(seriesList[i], config, ref mergePerformedThisRun);
+                ProcessSeries(seriesList[i], config, ref mergeCountThisRun);
 
                 double percentComplete = 100.0 * (i + 1) / seriesList.Count;
                 progress.Report(percentComplete);
@@ -99,11 +103,9 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             {
                 this.log.Info(
                     "Guest Star Cleaner: [DuplicatePersonDetection] {0}",
-                    mergePerformedThisRun
-                        ? (config.EnableGSTestmode
-                            ? "Testmode On: 1 merge evaluated this run (capped while testing) - see above for detail"
-                            : "1 merge performed this run - see above for detail")
-                        : "No merges performed this run");
+                    config.EnableGSTestmode
+                        ? $"Testmode On: {mergeCountThisRun} merge(s) would have been performed this run - see above for detail, no changes made"
+                        : $"{mergeCountThisRun} merge(s) performed this run (capped at 1 while testing this feature) - see above for detail");
             }
 
             this.log.Info("Guest Star Cleaner finished");
@@ -115,7 +117,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
         /// the series-level people and removes (or, in test mode, reports)
         /// any guest star already credited as a series-level actor.
         /// </summary>
-        private void ProcessSeries(BaseItem series, Configuration.PluginConfiguration config, ref bool mergePerformedThisRun)
+        private void ProcessSeries(BaseItem series, Configuration.PluginConfiguration config, ref int mergeCountThisRun)
         {
             var seriesQuery = new InternalPeopleQuery
             {
@@ -131,7 +133,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
 
             foreach (var episode in episodes)
             {
-                if (ProcessEpisode(episode, series, seriesPeople, config, ref mergePerformedThisRun))
+                if (ProcessEpisode(episode, series, seriesPeople, config, ref mergeCountThisRun))
                 {
                     episodesWithDuplicates++;
                 }
@@ -167,7 +169,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             BaseItem series,
             List<PersonInfo> seriesPeople,
             Configuration.PluginConfiguration config,
-            ref bool mergePerformedThisRun)
+            ref int mergeCountThisRun)
         {
             var episodeQuery = new InternalPeopleQuery
             {
@@ -203,11 +205,11 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
                     episode,
                     matchingSeriesPerson,
                     check,
-                    mergePerformedThisRun);
+                    mergeAlreadyPerformedThisRun: mergeCountThisRun > 0);
 
                 if (merged)
                 {
-                    mergePerformedThisRun = true;
+                    mergeCountThisRun++;
                 }
             }
 
