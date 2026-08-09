@@ -36,7 +36,7 @@ namespace Emby.GuestStarCleaner.UI.Config
         public CaptionItem DuplicatePersonHeading { get; set; } = new CaptionItem("Duplicate Person Repair");
 
         [DisplayName("Duplicate Person Merge Mode")]
-        [Description("When a series and episode credit share a name but different Emby person Ids, this controls whether the plugin automatically repoints media items onto one canonical Id. Always logged under [DuplicatePersonDetection] regardless of this setting. Only one merge is performed per task run while Test Mode is enabled.")]
+        [Description("When a series and episode credit share a name but different Emby person Ids, this controls whether the plugin automatically repoints media items onto one canonical Id. Always logged under [DuplicatePersonDetection] regardless of this setting. While Test Mode is on, no changes are made. While Test Mode is off, merges are capped at 1 per task run until this feature has been tested and confirmed.")]
         [AutoPostBack("updateconfig", nameof(DuplicatePersonMergeMode))]
         public DuplicatePersonMergeMode DuplicatePersonMergeMode { get; set; } = DuplicatePersonMergeMode.Off;
 

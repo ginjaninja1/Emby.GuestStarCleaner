@@ -41,15 +41,17 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             BaseItem episode,
             PersonInfo seriesPerson,
             PersonInfo episodePerson,
-            bool mergeAlreadyPerformedThisRun)
+            bool mergeAlreadyPerformedThisRun,
+            out string mergeSummary)
         {
+            mergeSummary = null;
             string seriesTmdb = seriesPerson.GetProviderId(MetadataProviders.Tmdb);
             string seriesTvdb = seriesPerson.GetProviderId(MetadataProviders.Tvdb);
             string episodeTmdb = episodePerson.GetProviderId(MetadataProviders.Tmdb);
             string episodeTvdb = episodePerson.GetProviderId(MetadataProviders.Tvdb);
 
             log.Debug(
-                "Guest Star Cleaner: {0} Name match but Id mismatch for '{1}' - series person Id={2} (Tmdb={3}, Tvdb={4}) vs episode person Id={5} (Tmdb={6}, Tvdb={7}) in {8}",
+                "{0} Name match but Id mismatch for '{1}' - series person Id={2} (Tmdb={3}, Tvdb={4}) vs episode person Id={5} (Tmdb={6}, Tvdb={7}) in {8}",
                 LogTag,
                 seriesPerson.Name,
                 seriesPerson.Id,
@@ -69,7 +71,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             if (!config.EnableGSTestmode && mergeAlreadyPerformedThisRun)
             {
                 log.Debug(
-                    "Guest Star Cleaner: {0} Skipping further merges this run (max 1 merge per task run while testing this feature) - would also have evaluated '{1}'",
+                    "{0} Skipping further merges this run (max 1 merge per task run while testing this feature) - would also have evaluated '{1}'",
                     LogTag,
                     seriesPerson.Name);
                 return false;
@@ -78,7 +80,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             if (!IsSafeToMerge(mode, seriesTmdb, seriesTvdb, episodeTmdb, episodeTvdb))
             {
                 log.Debug(
-                    "Guest Star Cleaner: {0} '{1}' does not meet the safety conditions for mode '{2}' - left as log-only",
+                    "{0} '{1}' does not meet the safety conditions for mode '{2}' - left as log-only",
                     LogTag,
                     seriesPerson.Name,
                     mode);
@@ -91,15 +93,17 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             if (config.EnableGSTestmode)
             {
                 log.Info(
-                    "Guest Star Cleaner: {0} Testmode On: would merge '{1}' - winner Id={2}, runt Id={3} - not performed",
+                    "{0} Testmode On: would merge '{1}' - winner Id={2}, runt Id={3} - not performed",
                     LogTag,
                     seriesPerson.Name,
                     winner.Id,
                     runt.Id);
+
+                mergeSummary = $"'{seriesPerson.Name}' - would merge, winner Id={winner.Id}, runt Id={runt.Id} (not performed, Test Mode on)";
                 return true;
             }
 
-            PerformMerge(log, libraryManager, winner, runt);
+            mergeSummary = PerformMerge(log, libraryManager, winner, runt);
             return true;
         }
 
@@ -185,7 +189,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             return count;
         }
 
-        private static void PerformMerge(ILogger log, ILibraryManager libraryManager, PersonInfo winner, PersonInfo runt)
+        private static string PerformMerge(ILogger log, ILibraryManager libraryManager, PersonInfo winner, PersonInfo runt)
         {
             List<BaseItem> slavedItems;
             try
@@ -199,7 +203,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             catch (Exception ex)
             {
                 log.ErrorException($"{LogTag} Error retrieving media items linked to runt person Id={runt.Id} - merge aborted", ex);
-                return;
+                return $"'{winner.Name}' - merge ABORTED, could not retrieve media items for runt Id={runt.Id} (see ErrorException above)";
             }
 
             var novatedDescriptions = new List<string>();
@@ -240,7 +244,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             }
 
             log.Info(
-                "Guest Star Cleaner: {0} Merged '{1}' - preserved Id={2}, deleted/orphaned Id={3}. Media items novated ({4}): {5}",
+                "{0} Merged '{1}' - preserved Id={2}, deleted/orphaned Id={3}. Media items novated ({4}): {5}",
                 LogTag,
                 winner.Name,
                 winner.Id,
@@ -248,10 +252,12 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
                 novatedDescriptions.Count,
                 novatedDescriptions.Count > 0 ? string.Join("; ", novatedDescriptions) : "none");
 
-            TryDeleteRuntPerson(log, libraryManager, runt);
+            string deletionResult = TryDeleteRuntPerson(log, libraryManager, runt);
+
+            return $"'{winner.Name}' - preserved Id={winner.Id}, runt Id={runt.Id} ({deletionResult}). {novatedDescriptions.Count} item(s) novated: {(novatedDescriptions.Count > 0 ? string.Join("; ", novatedDescriptions) : "none")}";
         }
 
-        private static void TryDeleteRuntPerson(ILogger log, ILibraryManager libraryManager, PersonInfo runt)
+        private static string TryDeleteRuntPerson(ILogger log, ILibraryManager libraryManager, PersonInfo runt)
         {
             try
             {
@@ -259,10 +265,10 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
                 if (runtItem == null)
                 {
                     log.Info(
-                        "Guest Star Cleaner: {0} Runt person Id={1} could not be loaded as a Person item - left in place, may be cleaned up by a future library scan",
+                        "{0} Runt person Id={1} could not be loaded as a Person item - left in place, may be cleaned up by a future library scan",
                         LogTag,
                         runt.Id);
-                    return;
+                    return "runt left in place, could not load as Person item";
                 }
 
                 libraryManager.DeleteItem(
@@ -271,16 +277,20 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
                     notifyParentItem: false);
 
                 log.Info(
-                    "Guest Star Cleaner: {0} Deleted orphaned runt person Id={1} ('{2}')",
+                    "{0} Deleted orphaned runt person Id={1} ('{2}')",
                     LogTag,
                     runt.Id,
                     runt.Name);
+
+                return "runt deleted";
             }
             catch (Exception ex)
             {
                 log.ErrorException(
                     $"{LogTag} Could not delete orphaned runt person Id={runt.Id} - left in place, may be cleaned up by a future library scan",
                     ex);
+
+                return "runt left in place, delete failed";
             }
         }
 

@@ -88,12 +88,13 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             // plugin), so every eligible match is simulated/logged
             // uncapped.
             int mergeCountThisRun = 0;
+            var mergeSummaries = new List<string>();
 
             for (int i = 0; i < seriesList.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                ProcessSeries(seriesList[i], config, ref mergeCountThisRun);
+                ProcessSeries(seriesList[i], config, ref mergeCountThisRun, mergeSummaries);
 
                 double percentComplete = 100.0 * (i + 1) / seriesList.Count;
                 progress.Report(percentComplete);
@@ -101,11 +102,22 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
 
             if (config.DuplicatePersonMergeMode != Configuration.DuplicatePersonMergeMode.Off)
             {
-                this.log.Info(
-                    "Guest Star Cleaner: [DuplicatePersonDetection] {0}",
-                    config.EnableGSTestmode
-                        ? $"Testmode On: {mergeCountThisRun} merge(s) would have been performed this run - see above for detail, no changes made"
-                        : $"{mergeCountThisRun} merge(s) performed this run (capped at 1 while testing this feature) - see above for detail");
+                if (mergeSummaries.Count == 0)
+                {
+                    this.log.Info("[DuplicatePersonDetection] No merges performed this run");
+                }
+                else
+                {
+                    this.log.Info(
+                        "[DuplicatePersonDetection] {0} merge(s) {1} this run:",
+                        mergeSummaries.Count,
+                        config.EnableGSTestmode ? "would have been performed" : "performed (capped at 1 while testing this feature)");
+
+                    foreach (var summary in mergeSummaries)
+                    {
+                        this.log.Info("[DuplicatePersonDetection]   {0}", summary);
+                    }
+                }
             }
 
             this.log.Info("Guest Star Cleaner finished");
@@ -117,7 +129,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
         /// the series-level people and removes (or, in test mode, reports)
         /// any guest star already credited as a series-level actor.
         /// </summary>
-        private void ProcessSeries(BaseItem series, Configuration.PluginConfiguration config, ref int mergeCountThisRun)
+        private void ProcessSeries(BaseItem series, Configuration.PluginConfiguration config, ref int mergeCountThisRun, List<string> mergeSummaries)
         {
             var seriesQuery = new InternalPeopleQuery
             {
@@ -133,7 +145,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
 
             foreach (var episode in episodes)
             {
-                if (ProcessEpisode(episode, series, seriesPeople, config, ref mergeCountThisRun))
+                if (ProcessEpisode(episode, series, seriesPeople, config, ref mergeCountThisRun, mergeSummaries))
                 {
                     episodesWithDuplicates++;
                 }
@@ -169,7 +181,8 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             BaseItem series,
             List<PersonInfo> seriesPeople,
             Configuration.PluginConfiguration config,
-            ref int mergeCountThisRun)
+            ref int mergeCountThisRun,
+            List<string> mergeSummaries)
         {
             var episodeQuery = new InternalPeopleQuery
             {
@@ -205,11 +218,13 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
                     episode,
                     matchingSeriesPerson,
                     check,
-                    mergeAlreadyPerformedThisRun: mergeCountThisRun > 0);
+                    mergeAlreadyPerformedThisRun: mergeCountThisRun > 0,
+                    mergeSummary: out var mergeSummary);
 
                 if (merged)
                 {
                     mergeCountThisRun++;
+                    mergeSummaries.Add(mergeSummary);
                 }
             }
 
