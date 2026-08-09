@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Emby.GuestStarCleaner.Configuration;
 using Emby.Web.GenericEdit;
 using Emby.Web.GenericEdit.Elements;
 using Emby.Web.GenericEdit.Elements.List;
@@ -31,6 +32,13 @@ namespace Emby.GuestStarCleaner.UI.Config
         [Description("When enabled, duplicates are logged but not removed. Turn off to actually remove them from Emby.")]
         [AutoPostBack("updateconfig", nameof(EnableGSTestmode))]
         public bool EnableGSTestmode { get; set; } = true;
+
+        public CaptionItem DuplicatePersonHeading { get; set; } = new CaptionItem("Duplicate Person Repair");
+
+        [DisplayName("Duplicate Person Merge Mode")]
+        [Description("When a series and episode credit share a name but different Emby person Ids, this controls whether the plugin automatically repoints media items onto one canonical Id. Always logged under [DuplicatePersonDetection] regardless of this setting. Only one merge is performed per task run while Test Mode is enabled.")]
+        [AutoPostBack("updateconfig", nameof(DuplicatePersonMergeMode))]
+        public DuplicatePersonMergeMode DuplicatePersonMergeMode { get; set; } = DuplicatePersonMergeMode.Off;
 
         public GenericItemList ScheduledTaskLink { get; set; } = new GenericItemList();
 

@@ -90,6 +90,7 @@ namespace Emby.GuestStarCleaner.UI
                 {
                     config.EnableGSCleaner = incoming.EnableGSCleaner;
                     config.EnableGSTestmode = incoming.EnableGSTestmode;
+                    config.DuplicatePersonMergeMode = incoming.DuplicatePersonMergeMode;
 
                     Plugin.Instance.SaveConfiguration();
 

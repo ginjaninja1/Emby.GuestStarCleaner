@@ -79,14 +79,31 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             // reported as soon as each fire-and-forget lambda was merely
             // *started*, not once it finished - hence progress jumping to
             // 100% almost immediately while work was still in flight.
+            // Tracks whether a duplicate-person merge has already been
+            // performed this task run. While Test Mode is on, only one
+            // merge round is evaluated per run so results can be reviewed
+            // incrementally - see DuplicatePersonMerger.EvaluateAndRepair.
+            bool mergePerformedThisRun = false;
+
             for (int i = 0; i < seriesList.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                ProcessSeries(seriesList[i], config);
+                ProcessSeries(seriesList[i], config, ref mergePerformedThisRun);
 
                 double percentComplete = 100.0 * (i + 1) / seriesList.Count;
                 progress.Report(percentComplete);
+            }
+
+            if (config.DuplicatePersonMergeMode != Configuration.DuplicatePersonMergeMode.Off)
+            {
+                this.log.Info(
+                    "Guest Star Cleaner: [DuplicatePersonDetection] {0}",
+                    mergePerformedThisRun
+                        ? (config.EnableGSTestmode
+                            ? "Testmode On: 1 merge evaluated this run (capped while testing) - see above for detail"
+                            : "1 merge performed this run - see above for detail")
+                        : "No merges performed this run");
             }
 
             this.log.Info("Guest Star Cleaner finished");
@@ -98,12 +115,13 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
         /// the series-level people and removes (or, in test mode, reports)
         /// any guest star already credited as a series-level actor.
         /// </summary>
-        private void ProcessSeries(BaseItem series, Configuration.PluginConfiguration config)
+        private void ProcessSeries(BaseItem series, Configuration.PluginConfiguration config, ref bool mergePerformedThisRun)
         {
             var seriesQuery = new InternalPeopleQuery
             {
                 ItemIds = new[] { series.InternalId },
                 EnableIds = true,
+                EnableProviderIds = true,
             };
 
             var seriesPeople = this.libraryManager.GetItemPeople(seriesQuery);
@@ -113,7 +131,7 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
 
             foreach (var episode in episodes)
             {
-                if (ProcessEpisode(episode, series, seriesPeople, config))
+                if (ProcessEpisode(episode, series, seriesPeople, config, ref mergePerformedThisRun))
                 {
                     episodesWithDuplicates++;
                 }
@@ -148,12 +166,14 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
             BaseItem episode,
             BaseItem series,
             List<PersonInfo> seriesPeople,
-            Configuration.PluginConfiguration config)
+            Configuration.PluginConfiguration config,
+            ref bool mergePerformedThisRun)
         {
             var episodeQuery = new InternalPeopleQuery
             {
                 ItemIds = new[] { episode.InternalId },
                 EnableIds = true,
+                EnableProviderIds = true,
             };
 
             var episodePeople = this.libraryManager.GetItemPeople(episodeQuery);
@@ -173,13 +193,22 @@ namespace Emby.GuestStarCleaner.ScheduledTasks
 
             foreach (var check in checkPeople)
             {
-                this.log.Debug(
-                    "Possible provider data error: person '{0}' (Type={1}) in S{2}E{3} - '{4}' matches a series-level person by name but not by Id",
-                    check.Name,
-                    check.Type,
-                    episode.ParentIndexNumber?.ToString("D2") ?? "??",
-                    episode.IndexNumber?.ToString("D2") ?? "??",
-                    episode.Name);
+                var matchingSeriesPerson = seriesPeople.First(sp => sp.Name == check.Name && sp.Id != check.Id);
+
+                bool merged = DuplicatePersonMerger.EvaluateAndRepair(
+                    this.log,
+                    this.libraryManager,
+                    config,
+                    series,
+                    episode,
+                    matchingSeriesPerson,
+                    check,
+                    mergePerformedThisRun);
+
+                if (merged)
+                {
+                    mergePerformedThisRun = true;
+                }
             }
 
             if (duplicatePeople.Count == 0)

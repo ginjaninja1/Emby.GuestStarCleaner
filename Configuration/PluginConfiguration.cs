@@ -16,5 +16,16 @@ namespace Emby.GuestStarCleaner.Configuration
         public bool EnableGSCleaner { get; set; } = true;
 
         public bool EnableGSTestmode { get; set; } = true;
+
+        /// <summary>
+        /// Controls automatic repair of duplicate Person entities detected
+        /// when a series-level person and an episode-level person share a
+        /// name but have different Emby person Ids. See
+        /// DuplicatePersonMergeMode for the safety tiers. Defaults to Off:
+        /// duplicates are always logged under [DuplicatePersonDetection]
+        /// regardless of this setting, but only repaired when a merge tier
+        /// is selected.
+        /// </summary>
+        public DuplicatePersonMergeMode DuplicatePersonMergeMode { get; set; } = DuplicatePersonMergeMode.Off;
     }
 }

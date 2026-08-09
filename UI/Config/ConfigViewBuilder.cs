@@ -29,6 +29,7 @@ namespace Emby.GuestStarCleaner.UI.Config
             {
                 EnableGSCleaner = persistedConfig.EnableGSCleaner,
                 EnableGSTestmode = persistedConfig.EnableGSTestmode,
+                DuplicatePersonMergeMode = persistedConfig.DuplicatePersonMergeMode,
 
                 ScheduledTaskLink = new GenericItemList
                 {
